@@ -1,5 +1,5 @@
 //***************************//
-// fight_bule_bird.js
+// fight_bule_bird_ga.js
 //
 //***************************//
 
@@ -9,10 +9,13 @@ var SCREEN_HEIGHT = 600;
 var PILLAR_MAX = 10;
 var SPAN = 1.5; // Frame = 1/60 sec
 var GRAVITY = 0.05;
-var BIRD_JUMP_VEL = -3.5
+var BIRD_JUMP_VEL = -3.0
 var PILLAR_INTERVAL = 1600;
 var GAME_CLEAR_TIME = 3200 + 1600 * 5;
-var NORMAL_PILLAR_ID = [0, 4, 8, 2, 6]
+var NORMAL_PILLAR_ID = [4, 2, 8, 6, 0];
+var GENE_CNT_MAX = 10; // more than 3
+var GENE_ELEM_MAX = 100;
+var JUMP_INTERVAL = 180;
 
 // Game State
 var GAMESTATE = {
@@ -78,8 +81,15 @@ Bird.prototype.updateParam = function (t_span) {
 
     if (this.gameclear) {
         gamestate = GAMESTATE.END;
-    } else if (this.pos[1] >= SCREEN_HEIGHT - this.size[0]) {
+    } else if (this.gameover) {
+        gamestate = GAMESTATE.END;
+    } else if (this.pos[1] >= (SCREEN_HEIGHT - this.size[0])) {
         this.pos[1] = SCREEN_HEIGHT + this.size[0];
+        this.vel = 0;
+        this.dieing();
+        gamestate = GAMESTATE.END;
+    } else if (this.pos[1] <= (-this.size[0])) {
+        this.pos[1] = 0;
         this.vel = 0;
         this.dieing();
         gamestate = GAMESTATE.END;
@@ -103,6 +113,14 @@ Bird.prototype.dieing = function () {
         clearInterval(intervalID);
         intervalID = null;
     }
+    //if (jumpIntervalID != null) {
+    //    clearInterval(jumpIntervalID);
+    //    jumpIntervalID = null;
+    //}
+    // update fitness of gene
+    my_date = new Date();
+    var time_diff = my_date.getTime() - now_time;
+    ga.gene[now_gene_index][0] = time_diff; //fitness
     this.dead = true;
     background.forEach(function (bk) {
         bk.stop();
@@ -124,7 +142,7 @@ Pillar.prototype.updateParam = function (t_span, mv_unit) {
         this.pos[0] = this.pos[0] +  t_span * mv_unit;
     }
 
-    if (this.pos[0] < -1 * this.width) {
+    if (this.pos[0] < (-1 * this.width)) {
         this.pos[0] = SCREEN_WIDTH;
         this.stop();
     }
@@ -138,6 +156,70 @@ Pillar.prototype.stop = function () {
     this.running = false;
 };
 
+// GA Objects
+var Ga = function () {
+    this.gene_cnt = GENE_CNT_MAX;
+    this.gene = new Array(this.gene_cnt);
+    for (var i=0; i<this.gene_cnt; i++) {
+        this.gene[i] = new Array(GENE_ELEM_MAX+1);
+        this.gene[i][0] = 0; // fitness = 0 (init value)
+        for (var j=1; j<GENE_ELEM_MAX+1; j++) {
+            this.gene[i][j] = Math.round(Math.random());
+        }
+    }
+}
+
+// sort gene list by fitness(gene[gene_index][0])
+Ga.prototype.gene_bubbleSort = function () {
+    var temp;
+    for (var i=0; i<this.gene_cnt-1; i++) {
+        for (var j=this.gene_cnt-1; j>i; j--) {
+            if (this.gene[j][0] > this.gene[j-1][0]) {
+                temp = new Array(GENE_ELEM_MAX+1);
+                temp = this.gene[j-1];
+                this.gene[j-1] = this.gene[j];
+                this.gene[j] = temp;
+            }
+        }
+    }
+}
+
+// gene must be sorted by fitness
+Ga.prototype.selection = function() {
+    for (var i=0; i<GENE_ELEM_MAX+1; i++) {
+        this.gene[this.gene_cnt-1][i] = this.gene[0][i];
+    }
+}
+
+// gene must be sorted by fitness
+Ga.prototype.crossover = function () {
+    var temp;
+    for (var i=0; i<this.gene_cnt-1; i+=2) {
+        for (var j=1; j<GENE_ELEM_MAX+1; j++) {
+            if (Math.random() > 0.5) { // swap probability=1/2
+                temp = this.gene[i][j];
+                this.gene[i][j] = this.gene[i+1][j];
+                this.gene[i+1][j] = temp;
+            }
+        }
+    }
+}
+
+Ga.prototype.mutation = function() {
+    //var gene_index = Math.floor(Math.random() * (GENE_CNT_MAX - 1));
+    //var elem_index = Math.floor(Math.random() * (GENE_ELEM_MAX - 1)) + 1;
+    //this.gene[gene_index][elem_index] = (this.gene[gene_index][elem_index] + 1) % 2;
+    var index;
+    index = new Array(this.gene_cnt);
+    for (var i=0; i<this.gene_cnt; i++) {
+        index[i] = Math.floor(Math.random() * (GENE_ELEM_MAX-1)) + 1;
+    }
+
+    for (var i=0; i<this.gene_cnt; i++) {
+        this.gene[i][index[i]] = (this.gene[i][index[i]] + 1) % 2;
+    }
+}
+
 
 //==== Main ==================================
 var canvas;
@@ -149,7 +231,11 @@ var cursor_end = CURSOR_END.RETRY;
 var gravity = GRAVITY;
 var bird_jump_vel = BIRD_JUMP_VEL;
 var pillar_interval = PILLAR_INTERVAL;
-var pillar_count = 0
+var pillar_count = 0;
+var now_gene_index = 0;
+var now_gene_elem_index = 1;
+var now_time;
+var generation = 1;
 
 var background = [
     new Background([0,0]),
@@ -168,6 +254,7 @@ var pillar = [
     new Pillar([SCREEN_WIDTH, 0], [360, 460], 50),
     new Pillar([SCREEN_WIDTH, 0], [360, 460], 50)
 ];
+var ga = new Ga();
 
 var Asset = {};
 Asset.images = {};
@@ -251,6 +338,14 @@ function gameClear() {
     });
 }
 
+var jumpIntervalID = window.setInterval(jumpBird, JUMP_INTERVAL);
+function jumpBird() {
+    if (!bird.dead && ga.gene[now_gene_index][now_gene_elem_index] == 1) {
+        bird.jump();
+    }
+    now_gene_elem_index += 1;
+}
+
 window.addEventListener('load', init);
 function init() {
     canvas = document.getElementById('maincanvas');
@@ -319,7 +414,12 @@ function render() {
         gamestate = GAMESTATE.END
     } else if (bird.dead) {
         ctx.drawImage(Asset.images['gameover'], 0,0);
-        switch (cursor_end) {
+        if (jumpIntervalID != null) {
+            clearInterval(jumpIntervalID);
+            jumpIntervalID = null;
+        }
+
+       switch (cursor_end) {
             case CURSOR_END.RETRY:
                 ctx.drawImage(Asset.images['cursor_retry'], 0,0);
                 break;
@@ -331,8 +431,11 @@ function render() {
             clearTimeout(timeoutID);
             timeoutID = null;
         }
-        gamestate = GAMESTATE.END
+        gamestate = GAMESTATE.END;
+        retryGame();
     } else if (gamestate == GAMESTATE.PLAYING) {
+        ctx.font = "18px 'Arial'"
+        ctx.fillText(String(generation) + " - " + String(now_gene_index), 100, 50);
 
         background.forEach(function(bk) {
             bk.updateParam(SPAN, -0.3);
@@ -345,7 +448,7 @@ function render() {
         bird.updateParam(SPAN);
         
         var hit = false;
-        for (i=0; i<PILLAR_MAX; i++) {
+        for (var i=0; i<PILLAR_MAX; i++) {
             hit = bird.collision(pillar[i]);
             if (hit) {
                 bird.dieing();
@@ -378,10 +481,33 @@ function initGame() {
     if (gamelevel != GAMELEVEL.INFINITE) {
         timeoutID = window.setTimeout(gameClear, GAME_CLEAR_TIME);
     }
+
+    if (jumpIntervalID != null) {
+        clearInterval(jumpIntervalID);
+        jumpIntervalID = null;
+    }
+    jumpIntervalID = window.setInterval(jumpBird, JUMP_INTERVAL);
+    now_gene_elem_index = 1;
+
+    my_date = new Date();
+    now_time = my_date.getTime();
 }
 
 function retryGame() {
     initGame();
+    now_gene_elem_index = 1;
+    if (now_gene_index == GENE_CNT_MAX - 1) {
+        now_gene_index = 0;
+        ga.gene_bubbleSort();
+        ga.crossover();
+        if (now_gene_index % 2 == 0) {
+            ga.mutation();
+        }
+        generation += 1;
+    } else {
+        now_gene_index += 1;
+    }
+
     background.forEach(function(bk) {
         bk.run();
     });
@@ -426,6 +552,7 @@ function changeLevel() {
     }
     initGame();
 }
+
 
 // Key Events
 var keyupflag = true;
