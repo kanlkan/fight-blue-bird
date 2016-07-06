@@ -9,10 +9,10 @@ var SCREEN_HEIGHT = 600;
 var PILLAR_MAX = 10;
 var SPAN = 1.5; // Frame = 1/60 sec
 var GRAVITY = 0.05;
-var BIRD_JUMP_VEL = -3.5
+var BIRD_JUMP_VEL = -3.0
 var PILLAR_INTERVAL = 1600;
-var GAME_CLEAR_TIME = 3200 + 1600 * 5;
-var NORMAL_PILLAR_ID = [0, 4, 8, 2, 6]
+var GAME_CLEAR_TIME = 1600 * (2 + 5);
+var NORMAL_PILLAR_ID = [4, 2, 8, 6, 0]
 
 // Game State
 var GAMESTATE = {
@@ -103,6 +103,7 @@ Bird.prototype.dieing = function () {
         clearInterval(intervalID);
         intervalID = null;
     }
+    this.vel = 0;
     this.dead = true;
     background.forEach(function (bk) {
         bk.stop();
@@ -124,7 +125,7 @@ Pillar.prototype.updateParam = function (t_span, mv_unit) {
         this.pos[0] = this.pos[0] +  t_span * mv_unit;
     }
 
-    if (this.pos[0] < -1 * this.width) {
+    if (this.pos[0] < (-1 * this.width)) {
         this.pos[0] = SCREEN_WIDTH;
         this.stop();
     }
@@ -149,7 +150,7 @@ var cursor_end = CURSOR_END.RETRY;
 var gravity = GRAVITY;
 var bird_jump_vel = BIRD_JUMP_VEL;
 var pillar_interval = PILLAR_INTERVAL;
-var pillar_count = 0
+var pillar_count = 0;
 
 var background = [
     new Background([0,0]),
@@ -223,19 +224,22 @@ Asset._loadImage = function(asset, onLoad) {
     Asset.images[asset.name] = image;
 };
 
-var intervalID = window.setInterval(pillarGo, pillar_interval);
+var intervalID;
 function pillarGo() {
-    if (gamelevel == GAMELEVEL.NORMAL && pillar_count < 5) {
+    if (gamelevel == GAMELEVEL.NORMAL) {
+        if (pillar_count == 5) {
+            return;
+        }
         pillar[NORMAL_PILLAR_ID[pillar_count]].run();
         pillar_count += 1
     } else {
         while (true) {
+            if (gamelevel == GAMELEVEL.RANDOM && pillar_count == 5) {
+                return;
+            }
             var i = Math.floor(Math.random() * PILLAR_MAX);
             if (pillar[i].running == false) {
                 pillar[i].run();
-                if (gamelevel == GAMELEVEL.RANDOM && pillar_count >= 4) {
-                    break
-                }
                 pillar_count += 1;
                 break;
             }
@@ -243,7 +247,7 @@ function pillarGo() {
     }
 }
 
-var timeoutID = window.setTimeout(gameClear, GAME_CLEAR_TIME);
+var timeoutID;
 function gameClear() {
     bird.gameclear = true;
     background.forEach(function (bk) {
@@ -307,6 +311,10 @@ function render() {
     ctx.drawImage(Asset.images['bird'], bird.pos[0], bird.pos[1]);
 
     if (bird.gameclear) {
+        if (intervalID != null) {
+            clearInterval(intervalID);
+            intervalID = null;
+        }
         ctx.drawImage(Asset.images['gameclear'], 0,0);
         switch (cursor_end) {
             case CURSOR_END.RETRY:
@@ -345,7 +353,7 @@ function render() {
         bird.updateParam(SPAN);
         
         var hit = false;
-        for (i=0; i<PILLAR_MAX; i++) {
+        for (var i=0; i<PILLAR_MAX; i++) {
             hit = bird.collision(pillar[i]);
             if (hit) {
                 bird.dieing();
