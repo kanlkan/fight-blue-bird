@@ -11,11 +11,11 @@ var SPAN = 1.5; // Frame = 1/60 sec
 var GRAVITY = 0.05;
 var BIRD_JUMP_VEL = -3.0
 var PILLAR_INTERVAL = 1600;
-var GAME_CLEAR_TIME = 3200 + 1600 * 5;
+var GAME_CLEAR_TIME = 1600 * (2 + 5);
 var NORMAL_PILLAR_ID = [4, 2, 8, 6, 0];
-var GENE_CNT_MAX = 10; // more than 3
+var GENE_CNT_MAX = 32; // 4*n (n >= 3).
 var GENE_ELEM_MAX = 100;
-var JUMP_INTERVAL = 180;
+var JUMP_INTERVAL = 200;
 
 // Game State
 var GAMESTATE = {
@@ -80,6 +80,7 @@ Bird.prototype.updateParam = function (t_span) {
     this.vel = this.vel + gravity * t_span;
 
     if (this.gameclear) {
+        this.vel = 0;
         gamestate = GAMESTATE.END;
     } else if (this.gameover) {
         gamestate = GAMESTATE.END;
@@ -109,18 +110,11 @@ Bird.prototype.collision = function (Pillar) {
 };
 
 Bird.prototype.dieing = function () {
-    if (intervalID != null) {
-        clearInterval(intervalID);
-        intervalID = null;
-    }
-    //if (jumpIntervalID != null) {
-    //    clearInterval(jumpIntervalID);
-    //    jumpIntervalID = null;
-    //}
     // update fitness of gene
     my_date = new Date();
-    var time_diff = my_date.getTime() - now_time;
-    ga.gene[now_gene_index][0] = time_diff; //fitness
+    var fitness = my_date.getTime() - now_time;
+    ga.gene[now_gene_index][0] = fitness;
+    this.vel = 0;
     this.dead = true;
     background.forEach(function (bk) {
         bk.stop();
@@ -158,9 +152,8 @@ Pillar.prototype.stop = function () {
 
 // GA Objects
 var Ga = function () {
-    this.gene_cnt = GENE_CNT_MAX;
-    this.gene = new Array(this.gene_cnt);
-    for (var i=0; i<this.gene_cnt; i++) {
+    this.gene = new Array(GENE_CNT_MAX);
+    for (var i=0; i<GENE_CNT_MAX; i++) {
         this.gene[i] = new Array(GENE_ELEM_MAX+1);
         this.gene[i][0] = 0; // fitness = 0 (init value)
         for (var j=1; j<GENE_ELEM_MAX+1; j++) {
@@ -169,34 +162,47 @@ var Ga = function () {
     }
 }
 
+Ga.prototype.printGene = function () {
+    for (var i=0; i<GENE_CNT_MAX; i++) {
+        str = "";
+        for (var j=0; j<GENE_ELEM_MAX+1; j++) {
+            str += (String(this.gene[i][j]) + ",")
+        }
+        console.log(String(i) +  " : " + str);
+    }
+}
+
 // sort gene list by fitness(gene[gene_index][0])
-Ga.prototype.gene_bubbleSort = function () {
+Ga.prototype.geneBubbleSort = function () {
     var temp;
-    for (var i=0; i<this.gene_cnt-1; i++) {
-        for (var j=this.gene_cnt-1; j>i; j--) {
+    for (var i=0; i<GENE_CNT_MAX-1; i++) {
+        for (var j=GENE_CNT_MAX-1; j>i; j--) {
             if (this.gene[j][0] > this.gene[j-1][0]) {
-                temp = new Array(GENE_ELEM_MAX+1);
-                temp = this.gene[j-1];
-                this.gene[j-1] = this.gene[j];
-                this.gene[j] = temp;
+                for (var k=0; k<GENE_ELEM_MAX+1; k++) {
+                    temp = this.gene[j-1][k];
+                    this.gene[j-1][k] = this.gene[j][k];
+                    this.gene[j][k] = temp;
+                }
             }
         }
     }
 }
 
-// gene must be sorted by fitness
+// gene must be sorted by fitness before selection.
 Ga.prototype.selection = function() {
     for (var i=0; i<GENE_ELEM_MAX+1; i++) {
-        this.gene[this.gene_cnt-1][i] = this.gene[0][i];
+        this.gene[GENE_CNT_MAX-1][i] = this.gene[0][i];
+        this.gene[GENE_CNT_MAX-2][i] = this.gene[1][i];
+        this.gene[GENE_CNT_MAX-3][i] = this.gene[2][i];
     }
 }
 
-// gene must be sorted by fitness
+// gene must be sorted by fitness before crossover.
 Ga.prototype.crossover = function () {
     var temp;
-    for (var i=0; i<this.gene_cnt-1; i+=2) {
+    for (var i=2; i<GENE_CNT_MAX-1; i++) {
         for (var j=1; j<GENE_ELEM_MAX+1; j++) {
-            if (Math.random() > 0.5) { // swap probability=1/2
+            if (Math.random() > 0.5) { // probability = 50%
                 temp = this.gene[i][j];
                 this.gene[i][j] = this.gene[i+1][j];
                 this.gene[i+1][j] = temp;
@@ -205,18 +211,30 @@ Ga.prototype.crossover = function () {
     }
 }
 
-Ga.prototype.mutation = function() {
-    //var gene_index = Math.floor(Math.random() * (GENE_CNT_MAX - 1));
-    //var elem_index = Math.floor(Math.random() * (GENE_ELEM_MAX - 1)) + 1;
-    //this.gene[gene_index][elem_index] = (this.gene[gene_index][elem_index] + 1) % 2;
-    var index;
-    index = new Array(this.gene_cnt);
-    for (var i=0; i<this.gene_cnt; i++) {
-        index[i] = Math.floor(Math.random() * (GENE_ELEM_MAX-1)) + 1;
+Ga.prototype.roulette = function (sum_fitness) {
+    var range = 0;
+    var tgt = Math.floor(Math.random() * sum_fitness);
+    var tgt_index;
+    var inc = 0;
+    for (var i=0; i<GENE_CNT_MAX; i++) {
+        inc += this.gene[i][0];
+        if (tgt <= inc) {
+            tgt_index = i;
+            break;
+        }
     }
 
-    for (var i=0; i<this.gene_cnt; i++) {
-        this.gene[i][index[i]] = (this.gene[i][index[i]] + 1) % 2;
+    return tgt_index;
+}
+
+Ga.prototype.mutation = function() {
+    var gene_index;
+    var elem_index;
+    gene_index = Math.floor(Math.random() * GENE_CNT_MAX);
+    for (var i=1; i<GENE_ELEM_MAX+1; i++) {
+        if (Math.floor(Math.random() * 100) == 0) { // mutation probability = 1%
+            this.gene[gene_index][i] = (this.gene[gene_index][i] + 1) % 2;
+        }
     }
 }
 
@@ -236,6 +254,13 @@ var now_gene_index = 0;
 var now_gene_elem_index = 1;
 var now_time;
 var generation = 1;
+var max_fitness = 0;
+var max_fitness_generation = 1;
+var fitness_record = new Array(15);
+fitness_record = [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0];
+var fitness_record_update = false;
+var do_retry = false;
+var gameclear_once = false;
 
 var background = [
     new Background([0,0]),
@@ -310,19 +335,22 @@ Asset._loadImage = function(asset, onLoad) {
     Asset.images[asset.name] = image;
 };
 
-var intervalID = window.setInterval(pillarGo, pillar_interval);
+var intervalID;
 function pillarGo() {
-    if (gamelevel == GAMELEVEL.NORMAL && pillar_count < 5) {
+    if (gamelevel == GAMELEVEL.NORMAL) {
+        if (pillar_count == 5) {
+            return;
+        }
         pillar[NORMAL_PILLAR_ID[pillar_count]].run();
         pillar_count += 1
     } else {
         while (true) {
+            if (gamelevel == GAMELEVEL.RANDOM && pillar_count == 5) {
+                return;
+            }
             var i = Math.floor(Math.random() * PILLAR_MAX);
             if (pillar[i].running == false) {
                 pillar[i].run();
-                if (gamelevel == GAMELEVEL.RANDOM && pillar_count >= 4) {
-                    break
-                }
                 pillar_count += 1;
                 break;
             }
@@ -330,7 +358,7 @@ function pillarGo() {
     }
 }
 
-var timeoutID = window.setTimeout(gameClear, GAME_CLEAR_TIME);
+var timeoutID;
 function gameClear() {
     bird.gameclear = true;
     background.forEach(function (bk) {
@@ -338,9 +366,13 @@ function gameClear() {
     });
 }
 
-var jumpIntervalID = window.setInterval(jumpBird, JUMP_INTERVAL);
+var jumpIntervalID;
 function jumpBird() {
-    if (!bird.dead && ga.gene[now_gene_index][now_gene_elem_index] == 1) {
+    if (bird.dead) {
+        now_gene_elem_index = 1;
+        return;
+    }
+    if (ga.gene[now_gene_index][now_gene_elem_index] == 1) {
         bird.jump();
     }
     now_gene_elem_index += 1;
@@ -369,24 +401,20 @@ function update() {
 function render() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    ctx.drawImage(Asset.images['background0'], background[0].pos[0], background[0].pos[1]);
-    ctx.drawImage(Asset.images['background1'], background[1].pos[0], background[1].pos[1]);
+    ctx.drawImage(Asset.images['background0'], background[0].pos[0],
+                                               background[0].pos[1]);
+    ctx.drawImage(Asset.images['background1'], background[1].pos[0],
+                                               background[1].pos[1]);
     if (gamestate == GAMESTATE.TITLE) {
-        ctx.drawImage(Asset.images['title'], 0,0);
-        switch (cursor_title) {
-            case CURSOR_TITLE.NORMAL:
-                ctx.drawImage(Asset.images['cursor_normal'], 0,0);
-                break;
-            case CURSOR_TITLE.RANDOM:
-                ctx.drawImage(Asset.images['cursor_random'], 0,0);
-                break;
-            case CURSOR_TITLE.INFINITE:
-                ctx.drawImage(Asset.images['cursor_infinite'], 0,0);
-                break;
-        }
+        gamelevel = GAMELEVEL.NORMAL;
         pillar.forEach(function(p) {
             p.stop();
         });
+        background.forEach(function(bk) {
+            bk.run();
+        });
+        initGame();
+        gamestate = GAMESTATE.PLAYING;
         return;
     }
     ctx.drawImage(Asset.images['pillar01'], pillar[0].pos[0], pillar[0].pos[1]);
@@ -401,41 +429,44 @@ function render() {
     ctx.drawImage(Asset.images['pillar42'], pillar[9].pos[0], pillar[9].pos[1]);
     ctx.drawImage(Asset.images['bird'], bird.pos[0], bird.pos[1]);
 
-    if (bird.gameclear) {
-        ctx.drawImage(Asset.images['gameclear'], 0,0);
-        switch (cursor_end) {
-            case CURSOR_END.RETRY:
-                ctx.drawImage(Asset.images['cursor_retry'], 0,0);
-                break;
-            case CURSOR_END.GOTITLE:
-                ctx.drawImage(Asset.images['cursor_gotitle'], 0,0);
-                break;
-        }
-        gamestate = GAMESTATE.END
-    } else if (bird.dead) {
-        ctx.drawImage(Asset.images['gameover'], 0,0);
-        if (jumpIntervalID != null) {
-            clearInterval(jumpIntervalID);
-            jumpIntervalID = null;
-        }
-
-       switch (cursor_end) {
-            case CURSOR_END.RETRY:
-                ctx.drawImage(Asset.images['cursor_retry'], 0,0);
-                break;
-            case CURSOR_END.GOTITLE:
-                ctx.drawImage(Asset.images['cursor_gotitle'], 0,0);
-                break;
-        }
-        if (timeoutID != null) {
-            clearTimeout(timeoutID);
-            timeoutID = null;
-        }
+    if (bird.gameclear && !gameclear_once) {
+        console.log("Game Clear!");
+        gameclear_once = true;
         gamestate = GAMESTATE.END;
-        retryGame();
+        if (!do_retry) {
+            delayTimeoutID = window.setTimeout(retryGame, 200);
+            now_gene_elem_index = 1;
+            do_retry = true;
+        }
+    } else if (bird.dead) {
+        gamestate = GAMESTATE.END;
+        if (!do_retry) {
+            delayTimeoutID = window.setTimeout(retryGame, 200);
+            now_gene_elem_index = 1;
+            do_retry = true;
+        }
     } else if (gamestate == GAMESTATE.PLAYING) {
-        ctx.font = "18px 'Arial'"
-        ctx.fillText(String(generation) + " - " + String(now_gene_index), 100, 50);
+        ctx.font = "24px 'Arial'"
+        ctx.fillText(String(generation) + " - " +
+                     String(now_gene_index) + " - " +
+                     String(now_gene_elem_index), 50, 50);
+        if (max_fitness < ga.gene[0][0] && !gameclear_once) {
+            max_fitness = ga.gene[0][0];
+            max_fitness_generation = generation - 1;
+        }
+        ctx.fillText("MAX Fitness " + String(max_fitness) +
+                     " (" + String(max_fitness_generation) + ")", 50, 90);
+        ctx.font = "18px 'Arial'";
+        if (now_gene_index == 0 && !fitness_record_update) {
+            for (var i=14; i>0; i--) {
+                fitness_record[i] = fitness_record[i-1];
+            }
+            fitness_record[0] = ga.gene[0][0];
+            fitness_record_update = true;
+        }
+        for (var i=0; i<15; i++) {
+            ctx.fillText(String(fitness_record[i]), 50, 130 + 22 * i);
+        }
 
         background.forEach(function(bk) {
             bk.updateParam(SPAN, -0.3);
@@ -482,35 +513,38 @@ function initGame() {
         timeoutID = window.setTimeout(gameClear, GAME_CLEAR_TIME);
     }
 
+    my_date = new Date();
+    now_time = my_date.getTime();
+
     if (jumpIntervalID != null) {
         clearInterval(jumpIntervalID);
         jumpIntervalID = null;
     }
     jumpIntervalID = window.setInterval(jumpBird, JUMP_INTERVAL);
     now_gene_elem_index = 1;
-
-    my_date = new Date();
-    now_time = my_date.getTime();
 }
 
+var delayTimeoutID;
 function retryGame() {
-    initGame();
-    now_gene_elem_index = 1;
     if (now_gene_index == GENE_CNT_MAX - 1) {
         now_gene_index = 0;
-        ga.gene_bubbleSort();
-        ga.crossover();
-        if (now_gene_index % 2 == 0) {
+        ga.geneBubbleSort();
+        if (!gameclear_once) {
+            ga.selection();
+            ga.crossover();
             ga.mutation();
+            generation += 1;
+            fitness_record_update = false;
         }
-        generation += 1;
     } else {
         now_gene_index += 1;
     }
-
+    
     background.forEach(function(bk) {
         bk.run();
     });
+    do_retry = false;
+    initGame();
     gamestate = GAMESTATE.PLAYING;
 }
 
@@ -537,121 +571,4 @@ function detCollision(_bird, _pillar) {
 
     return hit;
 }
-
-function changeLevel() {
-    switch (cursor_title) {
-        case CURSOR_TITLE.NORMAL:
-            gamelevel = GAMELEVEL.NORMAL
-            break;
-        case CURSOR_TITLE.RANDOM:
-            gamelevel = GAMELEVEL.RANDOM
-            break;
-        case CURSOR_TITLE.INFINITE:
-            gamelevel = GAMELEVEL.INFINITE
-            break;
-    }
-    initGame();
-}
-
-
-// Key Events
-var keyupflag = true;
-document.onkeypress = function(event) {
-    if (event != null) {
-        keycode = event.which;
-        event.preventDefault();
-        event.stopPropagation();
-    } else {
-        keycode = event.keyCode;
-        event.returnValue = false;
-        event.cancelBubble = true;
-    }
-
-    //alert("keycode: %d", keycode);
-    if (keycode == 32 && keyupflag == true) { // SPACE key
-        //alert("space pressed.");
-        if (!bird.dead && !bird.gameclear) {
-            bird.jump();
-        }
-        keyupflag = false;
-    } else if (keycode == 13) { // 'Enter' key
-        if (gamestate == GAMESTATE.TITLE) {
-            changeLevel();
-            background.forEach(function (bk) {
-                bk.run();
-            });
-            gamestate = GAMESTATE.PLAYING;
-        } else if (gamestate == GAMESTATE.END && cursor_end == CURSOR_END.RETRY) {
-            retryGame();
-        } else if (gamestate == GAMESTATE.END && cursor_end == CURSOR_END.GOTITLE) {
-            initGame();
-            gamestate = GAMESTATE.TITLE;
-            cursor_end = CURSOR_END.RETRY;
-        }
-    } else if (keycode == 107) { // 'j' key
-        if (gamestate == GAMESTATE.TITLE) {
-            switch (cursor_title) {
-                case CURSOR_TITLE.NORMAL:
-                    cursor_title = CURSOR_TITLE.INFINITE;
-                    break;
-                case CURSOR_TITLE.RANDOM:
-                    cursor_title = CURSOR_TITLE.NORMAL;
-                    break;
-                case CURSOR_TITLE.INFINITE:
-                    cursor_title = CURSOR_TITLE.RANDOM;
-                    break;
-            }
-        } else if (gamestate == GAMESTATE.END) {
-            switch (cursor_end) {
-                case CURSOR_END.RETRY:
-                    cursor_end = CURSOR_END.GOTITLE
-                    break;
-                case CURSOR_END.GOTITLE:
-                    cursor_end = CURSOR_END.RETRY;
-                    break;
-            }
-        }
-    } else if (keycode == 106) { // 'k' key
-        if (gamestate == GAMESTATE.TITLE) {
-            switch (cursor_title) {
-                case CURSOR_TITLE.NORMAL:
-                    cursor_title = CURSOR_TITLE.RANDOM;
-                    break;
-                case CURSOR_TITLE.RANDOM:
-                    cursor_title = CURSOR_TITLE.INFINITE;
-                    break;
-                case CURSOR_TITLE.INFINITE:
-                    cursor_title = CURSOR_TITLE.NORMAL;
-                    break;
-            }
-        } else if (gamestate == GAMESTATE.END) {
-            switch (cursor_end) {
-                case CURSOR_END.RETRY:
-                    cursor_end = CURSOR_END.GOTITLE
-                    break;
-                case CURSOR_END.GOTITLE:
-                    cursor_end = CURSOR_END.RETRY;
-                    break;
-            }
-        }
-    }
-}
-
-document.onkeyup =  function(event) {
-    if (event != null) {
-        keycode = event.which;
-        event.preventDefault();
-        event.stopPropagation();
-    } else {
-        keycode = event.keyCode;
-        event.returnValue = false;
-        event.cancelBubble = true;
-    }
-
-    if (keycode == 32) {    // SPACE key
-        //alert("space pressed.");
-        keyupflag = true;
-    }
-}
-
 
