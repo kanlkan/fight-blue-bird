@@ -200,7 +200,7 @@ Ga.prototype.selection = function() {
 // gene must be sorted by fitness before crossover.
 Ga.prototype.crossover = function () {
     var temp;
-    for (var i=2; i<GENE_CNT_MAX-1; i++) {
+    for (var i=2; i<GENE_CNT_MAX-1; i+=2) {
         for (var j=1; j<GENE_ELEM_MAX+1; j++) {
             if (Math.random() > 0.5) { // probability = 50%
                 temp = this.gene[i][j];
