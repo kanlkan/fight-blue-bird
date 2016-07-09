@@ -7,12 +7,12 @@
 var SCREEN_WIDTH = 800;
 var SCREEN_HEIGHT = 600;
 var PILLAR_MAX = 10;
-var SPAN = 1.5; // Frame = 1/60 sec
-var GRAVITY = 0.05;
-var BIRD_JUMP_VEL = -3.0
-var PILLAR_INTERVAL = 1600;
-var GAME_CLEAR_TIME = 1600 * (2 + 5);
-var NORMAL_PILLAR_ID = [4, 2, 8, 6, 0]
+var SPAN = 2.5;
+var GRAVITY = 0.06;
+var BIRD_JUMP_VEL = -3.5
+var PILLAR_INTERVAL = 1700;
+var GAME_CLEAR_TIME = 1700 * (2 + 5);
+var NORMAL_PILLAR_ID = [4, 2, 8, 6, 0];
 
 // Game State
 var GAMESTATE = {
@@ -78,7 +78,7 @@ Bird.prototype.updateParam = function (t_span) {
 
     if (this.gameclear) {
         gamestate = GAMESTATE.END;
-    } else if (this.pos[1] >= SCREEN_HEIGHT - this.size[0]) {
+    } else if (this.pos[1] >= (SCREEN_HEIGHT - this.size[0])) {
         this.pos[1] = SCREEN_HEIGHT + this.size[0];
         this.vel = 0;
         this.dieing();
@@ -263,18 +263,12 @@ function init() {
     canvas.height = SCREEN_HEIGHT;
     gamestate = GAMESTATE.TITLE;
     pillar_count = 0
-    requestAnimationFrame(update);
-
     Asset.loadAssets(function() {
-        requestAnimationFrame(update);
+        renderIntervalID = window.setInterval(render, 1000/60);
     });
 }
 
-function update() {
-    requestAnimationFrame(update);
-    render();
-}
-
+var renderIntervalID;
 function render() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
